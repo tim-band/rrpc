@@ -29,25 +29,31 @@ You must repeatedly call \code{later::run_now} after calling this function
 to drain the queue of messages.
 }
 \examples{
+run <- function(data) {
+  # do some calculation and return some result
+  #...
+  results <- list()
+  results$x <- c(1,2,3)
+  results$y <- c(1,4,3)
+  results
+}
+host <- '127.0.0.1'
+port <- 8089
 rrpcServer(host=host, port=port, interface=list(
   run=function(data) {
       run(data)
   },
   plot=function(data, width, height) {
-       obj <- list()
-       obj$results <- run(data)
-       tempFilename <- tempfile(pattern='plot', fileext='png')
-       device(file=tempFilename, width=width, height=height)
-       scatterplot(obj$results)
-       dev.off()
-       fileSize <- file.size(tempFilename)
-       raw <- readBin(tempFilename, what="raw", n=fileSize)
-       obj$src <- paste0("data:", mimeType, ";base64,", jsonlite::base64_enc(raw))
-       obj
+    obj <- list()
+    obj$src <- encodePlotAsPng(width, height, function() {
+      results <- run(data)
+      plot(x=results$x, y=results$y)
+    })
+    obj
   }
 ))
 cat(sprintf("Listening on \%s:\%d\n", host, port))
-while (TRUE) {
-  later::run_now(9999)
-}
+# Should call this in an infinite loop.
+# Could also use a higher timeout argument in run_now
+later::run_now(1)
 }

@@ -2,17 +2,27 @@
 % Please edit documentation in R/rrpc.R
 \name{encodePlot}
 \alias{encodePlot}
-\title{Renders a plot as a base64-encoded png}
+\title{Renders a plot as a base64-encoded image}
 \usage{
-encodePlot(width, height, plotFn)
+encodePlot(device, mimeType, width, height, plotFn)
 }
 \arguments{
-\item{width}{Width of the plot in pixels}
+\item{device}{Graphics device function, such as \link[grDevices:png]{grDevices::png}
+or \link[grDevices:pdf]{grDevices::pdf}}
 
-\item{height}{Height of the plot in pixels}
+\item{mimeType}{Mime type for the data produced by \code{device}}
+
+\item{width}{Width of the plot in units applicable to \code{device}}
+
+\item{height}{Height of the plot in units applicable to \code{device}}
 
 \item{plotFn}{Function to call to perform the plot}
 }
 \description{
-Renders a plot as a base64-encoded png
+Renders a plot as a base64-encoded image
+}
+\seealso{
+\code{\link[=encodePlotAsPng]{encodePlotAsPng()}}
+
+\code{\link[=encodePlotAsPdf]{encodePlotAsPdf()}}
 }

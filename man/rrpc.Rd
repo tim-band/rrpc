@@ -7,14 +7,14 @@
 rrpc(interface)
 }
 \arguments{
-\item{interface}{A list of named functions that can will be
-able to be called over RPC. Each function has parameters
-that will be fed from the params object passed over RPC,
-the key in the params object matching the parameter name.}
+\item{interface}{A list of named functions that will be able to be called
+over the WebSocket. Each function can have parameters that will be fed
+from the params object passed in, the key in the params object matching
+the parameter name.}
 }
 \description{
 If calling the \code{httpuv::startServer} function manually, \code{rrpc}
-returns the function to provde as the onWSOpen parameter.
+returns the function to provde as the \code{onWSOpen} parameter.
 }
 \examples{
 httpuv::startServer(host='127.0.0.1', port=8888, app=list(
@@ -27,4 +27,7 @@ httpuv::startServer(host='127.0.0.1', port=8888, app=list(
     }
   ))
 ))
+}
+\seealso{
+\code{\link[httpuv:startServer]{httpuv::startServer()}}
 }

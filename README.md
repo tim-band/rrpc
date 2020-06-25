@@ -10,26 +10,16 @@ JavaScript but use R for the calculation engine.
 To provide the R functions to be called, write R code like the following:
 
 ```R
-rrpc::rrpcServer(host=host, port=port, interface=list(
-  # include any parameters you want the JavaScript to provide
+rrpcServer(host=host, port=port, interface=list(
   run=function(data) {
-    # return whatever you want returned to the JavaScript
-    run(data)
+      run(data)
   },
   plot=function(data, width, height) {
     obj <- list()
-    # Here we are returning the results as well as the graphics,
-    # perhaps you do not need this.
-    obj$results <- run(data)
-    # encodePlot is a handy function for returning graphics
-    obj$src <- rrpc::encodePlot(
-      width=width,
-      height=height,
-      plotFn=function() {
-        scatterplot(obj$results)
+    obj$src <- encodePlotAsPng(width, height, function() {
+      results <- run(data)
+      plot(x=results$x, y=results$y)
     })
-    # Return the entire object to be returned (it will be
-    # encoded as JSON)
     obj
   }
 ))

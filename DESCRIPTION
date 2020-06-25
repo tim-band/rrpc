@@ -1,5 +1,5 @@
 Package: rrpc
-Title: Minimal HTTP server allowing calls from JavaScript to R
+Title: Minimal HTTP Server Allowing Calls from JavaScript to R
 Version: 0.1.0
 Authors@R: 
     person(given = "Tim",
@@ -10,12 +10,18 @@ Description: Serves a WebSocket allowing JavaScript to talk to
     your R functions and optionally serve static files as an HTTP
     server. In this way you can build a web server over your R
     functionality like you can with Shiny, but here your UI must
-    be written in JavaScript, not R.
+    be written in JavaScript, not R. For information on the browser
+    code required to call your R code from JavaScript, please see
+    the home page listed below.
 Depends: R (>= 2.15.1)
 Imports:
-    httpuv (>= 1.5.4)
+    jsonlite (>= 1.6.1),
+    later (>= 1.0),
+    httpuv (>= 1.5.4),
+    grDevices (>= 3.6.2)
 License: GPL-3
 Encoding: UTF-8
 LazyData: true
+URL: https://github.com/tim-band/rrpc
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.1.0
