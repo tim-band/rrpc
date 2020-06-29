@@ -10,7 +10,7 @@
 #' @seealso [httpuv::startServer()]
 #' @examples
 #' httpuv::startServer(host='127.0.0.1', port=8888, app=list(
-#'   onWSOpen=rrpc(list(
+#'   onWSOpen=rrpc::rrpc(list(
 #'     add=function(a,b) {
 #'       a + b
 #'     },
@@ -30,7 +30,9 @@ rrpc <- function(interface) { function(ws) {
             envelope$error <- "no such method"
             envelope$result <- NULL
         } else {
-            envelope$result <- do.call(interface[[method]], df$params)
+            envelope$result <- tryCatch(
+                do.call(interface[[method]], df$params),
+                error=function(e) { envelope$error <- e })
         }
         ws$send(jsonlite::toJSON(envelope))
     })
@@ -63,13 +65,13 @@ rrpc <- function(interface) { function(ws) {
 #' }
 #' host <- '127.0.0.1'
 #' port <- 8089
-#' rrpcServer(host=host, port=port, interface=list(
+#' rrpc::rrpcServer(host=host, port=port, interface=list(
 #'   run=function(data) {
 #'       run(data)
 #'   },
 #'   plot=function(data, width, height) {
 #'     obj <- list()
-#'     obj$src <- encodePlotAsPng(width, height, function() {
+#'     obj$src <- rrpc::encodePlotAsPng(width, height, function() {
 #'       results <- run(data)
 #'       plot(x=results$x, y=results$y)
 #'     })
@@ -77,9 +79,8 @@ rrpc <- function(interface) { function(ws) {
 #'   }
 #' ))
 #' cat(sprintf("Listening on %s:%d\n", host, port))
-#' # Should call this in an infinite loop.
-#' # Could also use a higher timeout argument in run_now
-#' later::run_now(1)
+#' # Must now call later::run_now(1) in an infinite loop
+#' # to ensure that all messages are responded to.
 rrpcServer <- function(interface, host='0.0.0.0', port=8080, appDir=NULL, root="/") {
     app <- list(onWSOpen=rrpc(interface))
     if (!is.null(appDir)) {

@@ -18,7 +18,7 @@ returns the function to provde as the \code{onWSOpen} parameter.
 }
 \examples{
 httpuv::startServer(host='127.0.0.1', port=8888, app=list(
-  onWSOpen=rrpc(list(
+  onWSOpen=rrpc::rrpc(list(
     add=function(a,b) {
       a + b
     },

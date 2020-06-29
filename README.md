@@ -30,7 +30,8 @@ while (TRUE) {
 ```
 
 To call your functions from a browser, get hold of a recent version of
-rrpc.min.js from [the releases page on GitHub](https://github.com/tim-band/rrpc-js/releases/) and write JavaScript a little like this:
+`rrpc.min.js` from [the releases page on GitHub](https://github.com/tim-band/rrpc-js/releases/)
+and write JavaScript a little like this:
 
 ```html
 <script src='rrpc.min.js'>
