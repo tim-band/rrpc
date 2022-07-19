@@ -18,6 +18,11 @@ or \link[grDevices:pdf]{grDevices::pdf}}
 
 \item{plotFn}{Function to call to perform the plot}
 }
+\value{
+list with two keys, whose values can each be NULL:
+'plot' is a plot in HTML img src form and 'data' is a data frame or other
+non-plot result.
+}
 \description{
 Renders a plot as a base64-encoded image
 }

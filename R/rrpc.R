@@ -1,94 +1,189 @@
-#' Returns the function that sets up the WebSocket
+globals <- new.env(parent = emptyenv())
+
+#' Sends a progress update to the client.
 #'
-#' If calling the `httpuv::startServer` function manually, `rrpc`
-#' returns the function to provde as the `onWSOpen` parameter.
-#' @param interface A list of named functions that will be able to be called
-#' over the WebSocket. Each function can have parameters that will be fed
-#' from the params object passed in, the key in the params object matching
-#' the parameter name.
+#' During a slow remote procedure call, call this to inform the client of
+#' progress.
+#' @param numerator The progress, out of [denominator]
+#' @param denominator What the progress is out of. You could use this for the
+#' number of known items to be completed so that each call increases either
+#' the numerator (for more items done) and/or the denominator (for more items
+#' discovered that need to be done). However, it is not necessary to do this,
+#' you can reduce the numerator if you want.
 #' @export
-#' @seealso [httpuv::startServer()]
-#' @examples
-#' httpuv::startServer(host='127.0.0.1', port=8888, app=list(
-#'   onWSOpen=rrpc::rrpc(list(
-#'     add=function(a,b) {
-#'       a + b
-#'     },
-#'     multiply=function(a,b) {
-#'       a * b
-#'     }
-#'   ))
-#' ))
+sendProgress <- function(numerator, denominator=1) {
+  globals$ws$send(jsonlite::toJSON(list(
+    type = "progress",
+    id = globals$id,
+    numerator = numerator,
+    denominator = denominator
+  )))
+}
+
+#' Sends informational text to the client.
+#'
+#' During a slow remote procedure call, call this to inform the client of
+#' progress.
+#' @param text The text to send
+#' @export
+sendInfoText <- function(text) {
+  globals$ws$send(jsonlite::toJSON(list(
+    type = "info",
+    id = globals$id,
+    text = text
+  )))
+}
+
+# Calls fn with parameters params. rparams is a list of
+# parameters that are not passed to fn (like controlling
+# the plot format).
+processMessage <- function(fn, params, rparams) {
+  tryCatch({
+    if ("rrpc.resultformat" %in% names(rparams)) {
+      validateAndEncodePlotAs(rparams$rrpc.resultformat, function() {
+        do.call(fn, params)
+      })
+    } else {
+      list(
+        error = NULL,
+        result = list(
+          data = do.call(fn, params),
+          plot = NULL
+        )
+      )
+    }
+  },
+  error = function(e) {
+    print(paste("Error:", e$message))
+    print(paste("call:", format(e$call)))
+    list(
+      error = list(message = e$message, code = -32000),
+      result = NULL
+    )
+  })
+}
+
 rrpc <- function(interface) { function(ws) {
-    ws$onMessage(function(binary, message) {
-        df <- jsonlite::fromJSON(message);
-        method <- df$method
-        envelope <- list()
-        envelope$jsonrpc <- "2.0"
-        envelope$id <- df$id
-        if (is.null(interface[[method]])) {
-            envelope$error <- "no such method"
-            envelope$result <- NULL
-        } else {
-            envelope$result <- tryCatch(
-                do.call(interface[[method]], df$params),
-                error=function(e) { envelope$error <- e })
-        }
-        ws$send(jsonlite::toJSON(envelope))
+  ws$onMessage(function(binary, message) {
+    envelope <- tryCatch({
+      df <- jsonlite::fromJSON(message)
+      method <- df$method
+      params <- df$params
+      pnames <- names(params)
+      rnames <- pnames[grep("^rrpc\\.", pnames)]
+      # all parameters whos names begin with "rrpc."
+      rparams <- params[rnames]
+      # remove names beginning "rrpc." from params
+      params[rnames] <- NULL
+      fn <- interface[[method]]
+      if (is.null(fn)) {
+        list(
+          jsonrpc = "2.0",
+          id = df$id,
+          error <- list(message = "no such method", code = -32601)
+        )
+      } else {
+        globals$ws <- ws
+        globals$id <- df$id
+        r <- processMessage(fn, params, rparams)
+        env <- list(
+          jsonrpc = "2.0",
+          id = df$id,
+          error = r$error
+        )
+        # Set result only if r$result is not NULL
+        env$result <- r$result
+        env
+      }
+    }, error = function(e) {
+      list(
+        jsonrpc = "2.0",
+        id = NA,
+        error = list(message = "JSON parse error", code = -32700)
+      )
     })
+    ws$send(jsonlite::toJSON(envelope, force = TRUE, digits = NA))
+  })
 }}
 
-#' Starts a server that provices a JsonRPC interface to your R functions
+#' Makes and starts a server for serving R calculations
 #'
-#' Sets up a WebSocket interface to your R functions, and also optionally
-#' serves some static files as a normal HTTP server. In this way a simple
-#' web interface can be made over your R functions.
-#'
-#' You must repeatedly call `later::run_now` after calling this function
-#' to drain the queue of messages.
-#' @param interface The list of functions that the web interface gives
-#' access to.
-#' @param host The interface to listen on (for example `127.0.0.1`).
-#' Defaults to all interfaces.
-#' @param port The port to listen on.
-#' @param appDir The directory containing static files to serve, if desired.
-#' @param root The path for the static files to appear on.
+#' @param interface List of functions to be served. The names of the elements
+#' are the names that the client will use to call them.
+#' @param host Interface to listen on (default is '0.0.0.0', that is, all
+#' interfaces)
+#' @param port Port to listen on
+#' @param appDirs List of directories in which to find static files to serve
+#' @param root Root of the app on the server (with trailing slash)
+#' @return The server object, can be passed to [slStop]
 #' @export
-#' @examples
-#' run <- function(data) {
-#'   # do some calculation and return some result
-#'   #...
-#'   results <- list()
-#'   results$x <- c(1,2,3)
-#'   results$y <- c(1,4,3)
-#'   results
-#' }
-#' host <- '127.0.0.1'
-#' port <- 8089
-#' rrpc::rrpcServer(host=host, port=port, interface=list(
-#'   run=function(data) {
-#'       run(data)
-#'   },
-#'   plot=function(data, width, height) {
-#'     obj <- list()
-#'     obj$src <- rrpc::encodePlotAsPng(width, height, function() {
-#'       results <- run(data)
-#'       plot(x=results$x, y=results$y)
-#'     })
-#'     obj
-#'   }
-#' ))
-#' cat(sprintf("Listening on %s:%d\n", host, port))
-#' # Must now call later::run_now(1) in an infinite loop
-#' # to ensure that all messages are responded to.
-rrpcServer <- function(interface, host='0.0.0.0', port=8080, appDir=NULL, root="/") {
-    app <- list(onWSOpen=rrpc(interface))
-    if (!is.null(appDir)) {
-        paths <- list()
-        paths[[root]] <- appDir
-        app$staticPaths <- paths
+rrpcServer <- function(
+  interface,
+  host = '0.0.0.0',
+  port = NULL,
+  appDirs = NULL,
+  root = "/"
+) {
+  paths <- list()
+  paths[[paste0(root, "lang")]] <- httpuv::excludeStaticPath()
+  existingFiles <- list()
+  for(appDir in appDirs) {
+    files <- list.files(appDir, recursive = TRUE)
+    for (file in setdiff(files, existingFiles)) {
+      paths[[paste0(root,file)]] <- file.path(appDir, file)
+      if (file == "index.html" && !(root %in% names(paths))) {
+        paths[[root]] <- file.path(appDir, file)
+      }
     }
-    httpuv::startServer(host=host, port=port, app=app)
+    existingFiles <- union(existingFiles, files)
+  }
+  app <- list(onWSOpen = rrpc(interface))
+  app$staticPaths <- paths
+  langs <- list.dirs(path = file.path(appDir, "locales"),
+    full.names = FALSE,
+    recursive = FALSE
+  )
+  app$call <- function(req) {
+    al <- req$HTTP_ACCEPT_LANGUAGE
+    als <- strsplit(al, ",", fixed=TRUE)[[1]]
+    langPath <- c(sub(";.*", "", als), "en", langs[1])
+    lang <- intersect(langPath, langs)[1]
+    host <- req$HTTP_HOST
+    path <- sub("^/lang/", paste0("/locales/", lang, "/"), req$PATH_INFO)
+    list(
+      status = 307L,
+      headers = list("Location"=paste0(
+        req$rook.url_scheme, "://",
+        host,
+        req$HTTP_SCRIPT_NAME, path
+      )),
+      body = ""
+    )
+  }
+  if (is.null(port)) {
+    port <- httpuv::randomPort(min = 8192, max = 40000, host = host)
+  }
+  httpuv::startServer(host = host, port = port, app = app)
+}
+
+#' Obtains the address that the server is listening on
+#' 
+#' @return protocol://address:port
+getAddress <- function(server) {
+  host <- server$getHost()
+  port <- server$getPort()
+  protocol <- "http://"
+  if (grepl("://", host, fixed=TRUE)) {
+    protocol <- ""
+  }
+  paste0(protocol, host, ":", port)
+}
+
+#' Opens a browser to look at the server
+#'
+#' @param server The server to browse to
+browseTo <- function(server) {
+  utils::browseURL(getAddress(server))
 }
 
 #' Renders a plot as a base64-encoded image
@@ -99,41 +194,89 @@ rrpcServer <- function(interface, host='0.0.0.0', port=8080, appDir=NULL, root="
 #' @param width Width of the plot in units applicable to `device`
 #' @param height Height of the plot in units applicable to `device`
 #' @param plotFn Function to call to perform the plot
+#' @return list with two keys, whose values can each be NULL:
+#' 'plot' is a plot in HTML img src form and 'data' is a data frame or other
+#' non-plot result.
 #' @seealso [encodePlotAsPng()]
 #' @seealso [encodePlotAsPdf()]
+#' @export
 encodePlot <- function(device, mimeType, width, height, plotFn) {
-    tempFilename <- tempfile(pattern='plot', fileext='png')
-    device(file=tempFilename, width=width, height=height)
-    plotFn()
-    grDevices::dev.off()
-    fileSize <- file.size(tempFilename)
+  tempFilename <- tempfile(pattern='plot', fileext='.tmp')
+  device(file=tempFilename, width=as.numeric(width), height=as.numeric(height))
+  data <- plotFn()
+  plot <- NULL
+  grDevices::dev.off()
+  fileSize <- file.size(tempFilename)
+  if (!is.na(fileSize)) {
     raw <- readBin(tempFilename, what="raw", n=fileSize)
-    paste0("data:", mimeType, ";base64,", jsonlite::base64_enc(raw))
+    plot <- paste0("data:", mimeType, ";base64,", jsonlite::base64_enc(raw))
+  }
+  list(plot=plot, data=data)
+}
+
+validateAndEncodePlotAs <- function(format, plotFn) {
+  if (!is.list(format)) {
+    list(result=NULL, error="rrpc.resultformat specified but not as {type=[,height=,width=]}")
+  } else {
+    valid <- c('pdf', 'png', 'svg', 'csv')
+    if (format$type %in% valid) {
+      r <- encodePlotAs(format, plotFn)
+      list(result=r, error=NULL)
+    } else {
+      validCount <- length(valid)
+      errorText <- paste(
+        "rrpc.resultformat type should be",
+        paste(valid[1:validCount-1]),
+        "or", valid[validCount]
+      )
+      list(result=NULL, error=errorText)
+    }
+  }
 }
 
 #' Renders a plot as a base64-encoded PNG
 #'
 #' The result can be set as the `src` attribute of an `img` element in HTML.
 #'
-#' @param width Width of the plot in pixels
-#' @param height Height of the plot in pixels
+#' @param format An object specifying the output, with the following members:
+#' format$type is "png", "pdf" or "csv", and format$width and format$height are
+#' the dimensions of the PDF (in inches) or PNG (in pixels) if appropriate.
 #' @param plotFn Function to call to perform the plot
-#' @export
+#' @return list with two keys, whose values can each be NULL:
+#' 'plot' is a plot in HTML img src form and 'data' is a data frame or other
+#' non-plot result.
 #' @seealso [rrpcServer()]
-encodePlotAsPng <- function(width, height, plotFn) {
-    encodePlot(grDevices::png, "image/png", width, height, plotFn)
+#' @export
+encodePlotAs <- function(format, plotFn) {
+  type <- format$type
+  if (is.null(type)) {
+    stop("plot type not defined")
+  }
+  if (format$type == "csv") {
+    downloadCsv(plotFn())
+  } else if (format$type == "png") {
+    encodePlot(grDevices::png, "image/png",
+        format$width, format$height, plotFn)
+  } else if (format$type == "svg") {
+    encodePlot(grDevices::svg, "image/svg+xml",
+        format$width, format$height, plotFn)
+  } else if (format$type == "pdf") {
+    encodePlot(grDevices::pdf, "application/pdf",
+        format$width, format$height, plotFn)
+  } else {
+    stop(paste("Did not understand plot type", type))
+  }
 }
 
-#' Renders a plot as a base64-encoded PDF
-#'
-#' The result can be set as the `href` attribute of an `a` element in HTML
-#' to allow the PDF to be downloaded (also set a `download` attribute to
-#' a reasonable filename).
-#'
-#' @param width Width of the plot in inches
-#' @param height Height of the plot in inches
-#' @param plotFn Function to call to perform the plot
+#' Encodes a data frame as a CSV file to be downloaded
 #' @export
-encodePlotAsPdf <- function(width, height, plotFn) {
-    encodePlot(grDevices::pdf, "application/pdf", width, height, plotFn)
+downloadCsv <- function(results) {
+    forJson <- list()
+    forJson$action <- "download"
+    forJson$filename <- paste0(name, ".csv")
+    raw <- utils::capture.output(utils::write.csv(results, stdout()))
+    forJson$data <- paste0(
+        "data:text/csv;base64,",
+        jsonlite::base64_enc(raw))
+    forJson
 }

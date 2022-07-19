@@ -2,57 +2,32 @@
 % Please edit documentation in R/rrpc.R
 \name{rrpcServer}
 \alias{rrpcServer}
-\title{Starts a server that provices a JsonRPC interface to your R functions}
+\title{Makes and starts a server for serving R calculations}
 \usage{
-rrpcServer(interface, host = "0.0.0.0", port = 8080, appDir = NULL, root = "/")
+rrpcServer(
+  interface,
+  host = "0.0.0.0",
+  port = NULL,
+  appDirs = NULL,
+  root = "/"
+)
 }
 \arguments{
-\item{interface}{The list of functions that the web interface gives
-access to.}
+\item{interface}{List of functions to be served. The names of the elements
+are the names that the client will use to call them.}
 
-\item{host}{The interface to listen on (for example \verb{127.0.0.1}).
-Defaults to all interfaces.}
+\item{host}{Interface to listen on (default is '0.0.0.0', that is, all
+interfaces)}
 
-\item{port}{The port to listen on.}
+\item{port}{Port to listen on}
 
-\item{appDir}{The directory containing static files to serve, if desired.}
+\item{appDirs}{List of directories in which to find static files to serve}
 
-\item{root}{The path for the static files to appear on.}
+\item{root}{Root of the app on the server (with trailing slash)}
+}
+\value{
+The server object, can be passed to \link{slStop}
 }
 \description{
-Sets up a WebSocket interface to your R functions, and also optionally
-serves some static files as a normal HTTP server. In this way a simple
-web interface can be made over your R functions.
-}
-\details{
-You must repeatedly call \code{later::run_now} after calling this function
-to drain the queue of messages.
-}
-\examples{
-run <- function(data) {
-  # do some calculation and return some result
-  #...
-  results <- list()
-  results$x <- c(1,2,3)
-  results$y <- c(1,4,3)
-  results
-}
-host <- '127.0.0.1'
-port <- 8089
-rrpc::rrpcServer(host=host, port=port, interface=list(
-  run=function(data) {
-      run(data)
-  },
-  plot=function(data, width, height) {
-    obj <- list()
-    obj$src <- rrpc::encodePlotAsPng(width, height, function() {
-      results <- run(data)
-      plot(x=results$x, y=results$y)
-    })
-    obj
-  }
-))
-cat(sprintf("Listening on \%s:\%d\n", host, port))
-# Must now call later::run_now(1) in an infinite loop
-# to ensure that all messages are responded to.
+Makes and starts a server for serving R calculations
 }
